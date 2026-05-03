@@ -8,956 +8,178 @@
       content="Ghana NFC Reader for ECG prepaid cards and Ghana Card scans using Web NFC."
     />
     <title>Ghana NFC Reader</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: [
-                "Inter",
-                "ui-sans-serif",
-                "system-ui",
-                "-apple-system",
-                "BlinkMacSystemFont",
-                "Segoe UI",
-                "sans-serif",
-              ],
-            },
-            boxShadow: {
-              "blue-soft": "0 24px 80px rgba(37, 99, 235, 0.18)",
-            },
-          },
-        },
-      };
-    </script>
-    <style>
-      :root {
-        color-scheme: dark;
-      }
-
-      html {
-        scroll-behavior: smooth;
-      }
-
-      body {
-        min-height: 100vh;
-        background:
-          radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.22), transparent 38rem),
-          linear-gradient(180deg, #09090b 0%, #050505 100%);
-      }
-
-      .glass-panel {
-        border: 1px solid rgba(63, 63, 70, 0.78);
-        background: linear-gradient(180deg, rgba(24, 24, 27, 0.92), rgba(9, 9, 11, 0.94));
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
-      }
-
-      .status-dot {
-        width: 0.65rem;
-        height: 0.65rem;
-        border-radius: 999px;
-        background: #71717a;
-      }
-
-      .status-idle .status-dot,
-      .status-unsupported .status-dot {
-        background: #71717a;
-      }
-
-      .status-starting .status-dot,
-      .status-scanning .status-dot,
-      .status-loading .status-dot {
-        background: #3b82f6;
-        box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.13);
-      }
-
-      .status-success .status-dot {
-        background: #22c55e;
-        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.13);
-      }
-
-      .status-error .status-dot {
-        background: #ef4444;
-        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.13);
-      }
-
-      .scan-pulse {
-        position: relative;
-        isolation: isolate;
-      }
-
-      .scan-pulse::before {
-        content: "";
-        position: absolute;
-        inset: -0.65rem;
-        z-index: -1;
-        border-radius: 999px;
-        background: rgba(37, 99, 235, 0.16);
-        opacity: 0;
-        transform: scale(0.92);
-      }
-
-      .is-scanning .scan-pulse::before {
-        animation: scanPulse 1.8s ease-out infinite;
-      }
-
-      @keyframes scanPulse {
-        0% {
-          opacity: 0.84;
-          transform: scale(0.92);
-        }
-        100% {
-          opacity: 0;
-          transform: scale(1.18);
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        html {
-          scroll-behavior: auto;
-        }
-
-        .is-scanning .scan-pulse::before {
-          animation: none;
-        }
-      }
-    </style>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" defer></script>
   </head>
-  <body class="font-sans text-zinc-100 antialiased">
-    <main class="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-5 sm:px-6 lg:px-8">
-      <header class="mb-5 flex items-center justify-between gap-3">
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
         <div>
-          <h1 class="text-2xl font-semibold tracking-normal text-white sm:text-3xl">Ghana NFC Reader</h1>
-          <p class="mt-1 text-sm leading-5 text-zinc-400">ECG prepaid cards and Ghana Card scans</p>
+          <h1>Ghana NFC Reader</h1>
+          <p>ECG prepaid cards and Ghana Card scans</p>
         </div>
-        <div class="rounded-full border border-blue-500/40 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
-          Web NFC
-        </div>
+        <div class="nfc-pill">Web NFC</div>
       </header>
 
-      <section class="glass-panel rounded-2xl p-4 sm:p-5" aria-labelledby="scan-title">
-        <div class="flex items-start justify-between gap-4">
+      <section class="panel scan-panel" aria-labelledby="scan-title">
+        <div class="section-heading-row">
           <div>
-            <h2 id="scan-title" class="text-lg font-semibold text-white">Scan Card</h2>
-            <p class="mt-1 max-w-xl text-sm leading-6 text-zinc-300">
-              Hold ECG Prepaid Card or Ghana Card to the back of your phone
-            </p>
+            <h2 id="scan-title">Scan Card</h2>
+            <p>Hold ECG Prepaid Card or Ghana Card to the back of your phone</p>
           </div>
-          <div
-            id="statusBadge"
-            class="status-idle inline-flex shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-300"
-            aria-live="polite"
-          >
+          <div id="statusBadge" class="status-badge status-idle" aria-live="polite">
             <span class="status-dot" aria-hidden="true"></span>
             <span id="statusLabel">Idle</span>
           </div>
         </div>
 
-        <div id="supportAlert" class="mt-4 hidden rounded-xl border border-amber-500/35 bg-amber-500/10 p-3 text-sm leading-6 text-amber-100">
-          <strong class="font-semibold text-amber-50">Web NFC unavailable.</strong>
+        <div id="supportAlert" class="support-alert hidden">
+          <strong>Web NFC unavailable.</strong>
           <span id="supportMessage">
             Web NFC usually works only on Android Chrome in a secure context such as HTTPS or localhost.
           </span>
         </div>
 
-        <div class="mt-5 grid gap-4">
-          <button
-            id="scanButton"
-            type="button"
-            class="scan-pulse flex min-h-16 w-full items-center justify-center rounded-2xl bg-blue-600 px-5 py-4 text-base font-semibold text-white shadow-blue-soft transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 focus:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400 disabled:shadow-none"
-          >
+        <div class="scan-stack">
+          <button id="scanButton" type="button" class="primary-scan-button scan-pulse">
             Start NFC Scan
           </button>
 
-          <div class="rounded-xl border border-zinc-800 bg-black/28 p-3">
-            <p class="text-xs font-medium uppercase tracking-wider text-zinc-500">Real-time Status</p>
-            <p id="statusText" class="mt-2 text-sm leading-6 text-zinc-300">
-              Ready to scan when Web NFC is available.
-            </p>
+          <div class="status-card">
+            <p class="eyebrow">Real-time Status</p>
+            <p id="statusText">Ready to scan when Web NFC is available.</p>
           </div>
         </div>
       </section>
 
-      <section class="mt-5 grid gap-5 lg:grid-cols-[1.08fr_0.92fr]">
-        <div class="glass-panel rounded-2xl p-4 sm:p-5" aria-labelledby="card-info-title">
-          <div class="flex items-start justify-between gap-3">
+      <section class="content-grid">
+        <div class="panel card-info-panel" aria-labelledby="card-info-title">
+          <div class="section-heading-row">
             <div>
-              <h2 id="card-info-title" class="text-lg font-semibold text-white">Card Information</h2>
-              <p class="mt-1 text-sm text-zinc-400">Parsed from the latest NFC read</p>
+              <h2 id="card-info-title">Card Information</h2>
+              <p>Parsed from the latest NFC read</p>
             </div>
-            <div
-              id="readyIndicator"
-              class="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-semibold text-zinc-400"
-            >
-              Not Ready
-            </div>
+            <div id="readyIndicator" class="ready-indicator">Not Ready</div>
           </div>
 
-          <dl class="mt-5 grid gap-3">
-            <div class="rounded-xl border border-zinc-800 bg-black/24 p-3">
-              <dt class="text-xs font-medium uppercase tracking-wider text-zinc-500">Card UID</dt>
-              <dd class="mt-2 flex items-center justify-between gap-3">
-                <span id="uidValue" class="min-w-0 break-all text-sm font-medium text-white">No card scanned</span>
-                <button
-                  id="copyUidButton"
-                  type="button"
-                  class="shrink-0 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-blue-500 hover:text-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled
-                >
+          <dl class="info-list">
+            <div class="info-card">
+              <dt class="eyebrow">Card UID</dt>
+              <dd class="value-row">
+                <span id="uidValue" class="value-text">No card scanned</span>
+                <button id="copyUidButton" type="button" class="secondary-button compact-button" disabled>
                   Copy UID
                 </button>
               </dd>
             </div>
 
-            <div class="rounded-xl border border-zinc-800 bg-black/24 p-3">
-              <dt class="text-xs font-medium uppercase tracking-wider text-zinc-500">Detected Meter Number</dt>
-              <dd class="mt-2 flex items-center justify-between gap-3">
-                <span id="meterValue" class="min-w-0 break-all text-sm font-medium text-white">Not detected</span>
-                <button
-                  id="copyMeterButton"
-                  type="button"
-                  class="shrink-0 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-blue-500 hover:text-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled
-                >
+            <div class="info-card">
+              <dt class="eyebrow">Detected Meter Number</dt>
+              <dd class="value-row">
+                <span id="meterValue" class="value-text">Not detected</span>
+                <button id="copyMeterButton" type="button" class="secondary-button compact-button" disabled>
                   Copy Meter
                 </button>
               </dd>
             </div>
 
-            <div class="grid gap-3 sm:grid-cols-2">
-              <div class="rounded-xl border border-zinc-800 bg-black/24 p-3">
-                <dt class="text-xs font-medium uppercase tracking-wider text-zinc-500">Token</dt>
-                <dd id="tokenValue" class="mt-2 min-h-6 break-all text-sm font-medium text-white">Not found</dd>
+            <div class="info-split">
+              <div class="info-card">
+                <dt class="eyebrow">Token</dt>
+                <dd id="tokenValue" class="field-value">Not found</dd>
               </div>
-              <div class="rounded-xl border border-zinc-800 bg-black/24 p-3">
-                <dt class="text-xs font-medium uppercase tracking-wider text-zinc-500">Card Type</dt>
-                <dd id="typeValue" class="mt-2 min-h-6 text-sm font-medium text-white">Other</dd>
+              <div class="info-card">
+                <dt class="eyebrow">Card Type</dt>
+                <dd id="typeValue" class="field-value">Other</dd>
               </div>
             </div>
           </dl>
 
-          <label for="meterInput" class="mt-5 block text-sm font-medium text-zinc-200">Meter Number</label>
-          <div class="mt-2 flex gap-2">
-            <input
-              id="meterInput"
-              type="text"
-              inputmode="numeric"
-              autocomplete="off"
-              placeholder="Enter or edit meter number"
-              class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
-            />
-          </div>
+          <label for="meterInput" class="field-label">Meter Number</label>
+          <input
+            id="meterInput"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="Enter or edit meter number"
+            class="text-field"
+          />
 
-          <label for="notesInput" class="mt-4 block text-sm font-medium text-zinc-200">Notes</label>
+          <label for="notesInput" class="field-label">Notes</label>
           <textarea
             id="notesInput"
             rows="3"
             placeholder="Optional notes before saving"
-            class="mt-2 w-full resize-y rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+            class="text-field text-area"
           ></textarea>
 
-          <div class="mt-4 rounded-xl border border-zinc-800 bg-black/24 p-3">
-            <div class="flex items-center justify-between gap-3">
-              <p class="text-xs font-medium uppercase tracking-wider text-zinc-500">Raw Data</p>
-              <span id="recordCount" class="text-xs text-zinc-500">0 records</span>
+          <div class="raw-data-card">
+            <div class="raw-data-header">
+              <p class="eyebrow">Raw Data</p>
+              <span id="recordCount">0 records</span>
             </div>
-            <pre
-              id="rawDataOutput"
-              class="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-zinc-950/80 p-3 text-xs leading-5 text-zinc-300"
-            >No NFC data yet.</pre>
+            <pre id="rawDataOutput" class="raw-data-output">No NFC data yet.</pre>
           </div>
         </div>
 
-        <aside class="glass-panel rounded-2xl p-4 sm:p-5" aria-labelledby="supabase-title">
-          <h2 id="supabase-title" class="text-lg font-semibold text-white">Supabase</h2>
-          <p class="mt-1 text-sm leading-6 text-zinc-400">Save NFC reads to the <span class="font-mono text-zinc-300">nfc_reads</span> table.</p>
+        <aside class="panel supabase-panel" aria-labelledby="supabase-title">
+          <h2 id="supabase-title">Supabase</h2>
+          <p class="section-copy">
+            Save NFC reads to the <span class="mono">nfc_reads</span> table.
+          </p>
 
-          <label for="projectUrlInput" class="mt-5 block text-sm font-medium text-zinc-200">Project URL</label>
+          <label for="projectUrlInput" class="field-label">Project URL</label>
           <input
             id="projectUrlInput"
             type="url"
             spellcheck="false"
             placeholder="https://your-project.supabase.co"
-            class="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+            class="text-field"
           />
 
-          <label for="anonKeyInput" class="mt-4 block text-sm font-medium text-zinc-200">Anon Key</label>
+          <label for="anonKeyInput" class="field-label">Anon Key</label>
           <input
             id="anonKeyInput"
             type="password"
             spellcheck="false"
             placeholder="Supabase anon key"
-            class="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+            class="text-field"
           />
 
-          <div class="mt-4 grid grid-cols-2 gap-2">
-            <button
-              id="saveConfigButton"
-              type="button"
-              class="rounded-xl border border-zinc-700 px-3 py-3 text-sm font-semibold text-zinc-200 transition hover:border-blue-500 hover:text-blue-100"
-            >
+          <div class="action-grid">
+            <button id="saveConfigButton" type="button" class="outline-button">
               Save Config
             </button>
-            <button
-              id="saveReadButton"
-              type="button"
-              class="rounded-xl bg-blue-600 px-3 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
-              disabled
-            >
+            <button id="saveReadButton" type="button" class="primary-button" disabled>
               Save Read
             </button>
           </div>
 
-          <div
-            id="saveMessage"
-            class="mt-4 hidden rounded-xl border px-3 py-3 text-sm leading-6"
-            role="status"
-            aria-live="polite"
-          ></div>
+          <div id="saveMessage" class="save-message hidden" role="status" aria-live="polite"></div>
 
-          <div class="mt-5 rounded-xl border border-blue-500/25 bg-blue-500/10 p-3 text-sm leading-6 text-blue-100">
-            Web NFC reads only exposed NDEF records and serial numbers. Protected sectors and APDU-only card contents may not be available in the browser.
+          <div class="info-notice">
+            Web NFC reads only exposed NDEF records and serial numbers. Protected sectors and APDU-only card contents
+            may not be available in the browser.
           </div>
         </aside>
       </section>
 
-      <section class="mt-5 glass-panel rounded-2xl p-4 sm:p-5" aria-labelledby="history-title">
-        <div class="flex items-center justify-between gap-3">
+      <section class="panel history-panel" aria-labelledby="history-title">
+        <div class="section-heading-row">
           <div>
-            <h2 id="history-title" class="text-lg font-semibold text-white">Scan History</h2>
-            <p class="mt-1 text-sm text-zinc-400">Stored locally on this device</p>
+            <h2 id="history-title">Scan History</h2>
+            <p>Stored locally on this device</p>
           </div>
-          <button
-            id="clearHistoryButton"
-            type="button"
-            class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold text-zinc-300 transition hover:border-red-500 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled
-          >
+          <button id="clearHistoryButton" type="button" class="danger-outline-button" disabled>
             Clear History
           </button>
         </div>
-        <div id="historyList" class="mt-4 grid gap-3">
-          <p class="rounded-xl border border-zinc-800 bg-black/24 p-3 text-sm text-zinc-500">No scans saved locally yet.</p>
+        <div id="historyList" class="history-list">
+          <p class="empty-history">No scans saved locally yet.</p>
         </div>
       </section>
 
-      <footer class="mt-auto py-6 text-center text-xs text-zinc-500">
-        Best on Android Chrome • Web NFC API
-      </footer>
+      <footer class="app-footer">Best on Android Chrome | Web NFC API</footer>
     </main>
-
-    <script>
-      const STORAGE_KEYS = {
-        supabaseUrl: "ghana_nfc_supabase_url",
-        supabaseAnonKey: "ghana_nfc_supabase_anon_key",
-        history: "ghana_nfc_scan_history",
-      };
-
-      const MAX_HISTORY_ITEMS = 25;
-
-      const state = {
-        currentScan: null,
-        scanAbortController: null,
-        history: [],
-      };
-
-      const elements = {
-        body: document.body,
-        scanButton: document.getElementById("scanButton"),
-        statusBadge: document.getElementById("statusBadge"),
-        statusLabel: document.getElementById("statusLabel"),
-        statusText: document.getElementById("statusText"),
-        supportAlert: document.getElementById("supportAlert"),
-        supportMessage: document.getElementById("supportMessage"),
-        uidValue: document.getElementById("uidValue"),
-        meterValue: document.getElementById("meterValue"),
-        tokenValue: document.getElementById("tokenValue"),
-        typeValue: document.getElementById("typeValue"),
-        recordCount: document.getElementById("recordCount"),
-        rawDataOutput: document.getElementById("rawDataOutput"),
-        meterInput: document.getElementById("meterInput"),
-        notesInput: document.getElementById("notesInput"),
-        readyIndicator: document.getElementById("readyIndicator"),
-        copyUidButton: document.getElementById("copyUidButton"),
-        copyMeterButton: document.getElementById("copyMeterButton"),
-        projectUrlInput: document.getElementById("projectUrlInput"),
-        anonKeyInput: document.getElementById("anonKeyInput"),
-        saveConfigButton: document.getElementById("saveConfigButton"),
-        saveReadButton: document.getElementById("saveReadButton"),
-        saveMessage: document.getElementById("saveMessage"),
-        historyList: document.getElementById("historyList"),
-        clearHistoryButton: document.getElementById("clearHistoryButton"),
-      };
-
-      document.addEventListener("DOMContentLoaded", initApp);
-
-      function initApp() {
-        loadConfig();
-        loadHistory();
-        renderHistory();
-        bindEvents();
-        checkNfcSupport();
-        renderCurrentScan();
-      }
-
-      function bindEvents() {
-        elements.scanButton.addEventListener("click", startNfcScan);
-        elements.copyUidButton.addEventListener("click", () => copyValue("UID", getCurrentUid()));
-        elements.copyMeterButton.addEventListener("click", () => copyValue("Meter Number", elements.meterInput.value));
-        elements.saveConfigButton.addEventListener("click", saveConfig);
-        elements.saveReadButton.addEventListener("click", saveReadToSupabase);
-        elements.clearHistoryButton.addEventListener("click", clearHistory);
-        elements.meterInput.addEventListener("input", handleMeterEdit);
-      }
-
-      function checkNfcSupport() {
-        const hasNfc = "NDEFReader" in window;
-        const isSecure = window.isSecureContext;
-
-        if (hasNfc && isSecure) {
-          setStatus("idle", "Idle", "Ready. Tap Start NFC Scan and hold the card to the back of your phone.");
-          return;
-        }
-
-        elements.supportAlert.classList.remove("hidden");
-
-        if (!hasNfc && isLikelyIos()) {
-          elements.supportMessage.textContent =
-            "iPhone and iPad browsers do not currently expose Web NFC for this kind of browser scanning. Use Android Chrome.";
-        } else if (!isSecure) {
-          elements.supportMessage.textContent =
-            "Web NFC requires a secure context. Use HTTPS or localhost on Android Chrome.";
-        } else {
-          elements.supportMessage.textContent =
-            "This browser does not expose Web NFC. Android Chrome is the best supported option.";
-        }
-
-        elements.scanButton.disabled = true;
-        setStatus("unsupported", "Unsupported", "Web NFC is unavailable in this browser or context.");
-      }
-
-      async function startNfcScan() {
-        if (!("NDEFReader" in window)) {
-          showMessage("error", "Web NFC is not supported in this browser.");
-          setStatus("unsupported", "Unsupported", "Web NFC is unavailable in this browser.");
-          return;
-        }
-
-        if (!window.isSecureContext) {
-          showMessage("error", "Web NFC requires HTTPS or localhost.");
-          setStatus("unsupported", "Unsupported", "Open this page from HTTPS or localhost to scan.");
-          return;
-        }
-
-        try {
-          elements.scanButton.disabled = true;
-          elements.body.classList.add("is-scanning");
-          setStatus("starting", "Starting", "Requesting NFC permission...");
-
-          state.scanAbortController = new AbortController();
-          const reader = new NDEFReader();
-
-          reader.addEventListener("reading", handleNfcReading);
-          reader.addEventListener("readingerror", () => {
-            setStatus("error", "Read Error", "The card was detected but could not be read. Try holding it steady.");
-            elements.scanButton.disabled = false;
-            elements.body.classList.remove("is-scanning");
-          });
-
-          await reader.scan({ signal: state.scanAbortController.signal });
-          setStatus("scanning", "Scanning", "NFC scan is active. Hold the card flat against the back of your phone.");
-        } catch (error) {
-          const message = formatNfcError(error);
-          setStatus("error", "Error", message);
-          showMessage("error", message);
-          elements.scanButton.disabled = false;
-          elements.body.classList.remove("is-scanning");
-        }
-      }
-
-      async function handleNfcReading(event) {
-        try {
-          const rawData = await normalizeNdefEvent(event);
-          const parsed = parseCardData(rawData);
-
-          state.currentScan = {
-            id: createId(),
-            timestamp: new Date().toISOString(),
-            card_uid: event.serialNumber || rawData.serialNumber || "Unavailable",
-            card_type: parsed.cardType,
-            meter_number: parsed.meterNumber || "",
-            token: parsed.token || "",
-            raw_data: rawData,
-            notes: elements.notesInput.value.trim(),
-          };
-
-          elements.meterInput.value = state.currentScan.meter_number;
-          renderCurrentScan();
-          addHistoryItem(state.currentScan);
-
-          setStatus("success", "Scanned", "Card data captured. Review the details before saving.");
-        } catch (error) {
-          setStatus("error", "Parse Error", error.message || "Card was read, but the payload could not be decoded.");
-          showMessage("error", error.message || "Card was read, but the payload could not be decoded.");
-        } finally {
-          elements.scanButton.disabled = false;
-          elements.body.classList.remove("is-scanning");
-
-          if (state.scanAbortController) {
-            state.scanAbortController.abort();
-            state.scanAbortController = null;
-          }
-        }
-      }
-
-      async function normalizeNdefEvent(event) {
-        const records = [];
-
-        for (const record of event.message.records) {
-          const bytes = getRecordBytes(record.data);
-          const decoded = await decodeRecordPayload(record, bytes);
-
-          records.push({
-            recordType: record.recordType,
-            mediaType: record.mediaType || "",
-            id: record.id || "",
-            encoding: record.encoding || "",
-            lang: record.lang || "",
-            data: decoded,
-            byteLength: bytes.byteLength,
-            hex: bytesToHex(bytes),
-          });
-        }
-
-        return {
-          serialNumber: event.serialNumber || "",
-          recordCount: records.length,
-          records,
-          scannedAt: new Date().toISOString(),
-          userAgent: navigator.userAgent,
-        };
-      }
-
-      async function decodeRecordPayload(record, bytes) {
-        if (!record.data || bytes.byteLength === 0) {
-          return "";
-        }
-
-        try {
-          if (record.recordType === "text") {
-            return new TextDecoder(record.encoding || "utf-8").decode(bytes).replace(/\u0000/g, "").trim();
-          }
-
-          if (record.recordType === "url" || record.mediaType?.startsWith("text/")) {
-            return new TextDecoder(record.encoding || "utf-8").decode(bytes);
-          }
-
-          if (record.mediaType?.includes("json")) {
-            const text = new TextDecoder("utf-8").decode(bytes);
-            try {
-              return JSON.parse(text);
-            } catch {
-              return text;
-            }
-          }
-
-          return new TextDecoder("utf-8", { fatal: false }).decode(bytes).replace(/\u0000/g, "").trim();
-        } catch {
-          return bytesToHex(bytes);
-        }
-      }
-
-      function parseCardData(rawData) {
-        const searchText = buildSearchText(rawData);
-        const compactSearchText = searchText.replace(/\s+/g, " ");
-
-        /*
-          ECG parsing is intentionally best-effort. Browser Web NFC exposes NDEF
-          records and sometimes a serial number; it cannot bypass protected card
-          sectors or read APDU-only smartcard data. These patterns look for common
-          operator labels and long numeric values that may appear in readable NDEF
-          payloads, receipts, tags, or utility card metadata.
-        */
-        const meterNumber =
-          findFirstMatch(compactSearchText, [
-            /\b(?:meter|meterno|meter\s*no|meter\s*number|meter\s*id|mtr)\D{0,12}(\d{6,16})\b/i,
-            /\b(?:account|acct|account\s*number|customer\s*number)\D{0,12}(\d{6,16})\b/i,
-            /\becg\D{0,18}(\d{6,16})\b/i,
-          ]) || "";
-
-        const token =
-          findFirstMatch(compactSearchText, [
-            /\b(?:token|credit|topup|top-up|prepaid)\D{0,16}(\d(?:[\s-]?\d){15,24})\b/i,
-            /\b(\d{20})\b/,
-            /\b(\d{4}[\s-]\d{4}[\s-]\d{4}[\s-]\d{4}[\s-]\d{4})\b/,
-          ]) || "";
-
-        const hasEcgSignal =
-          /\b(ecg|electricity\s+company\s+of\s+ghana|prepaid|meter|meterno|top[-\s]?up|token)\b/i.test(searchText) ||
-          Boolean(meterNumber || token);
-
-        const hasGhanaCardSignal =
-          /\b(ghana\s*card|national\s+identification\s+authority|nia|ecowas|personal\s*id)\b/i.test(searchText) ||
-          /\bGHA[-\s]?\d{8,12}[-\s]?\d\b/i.test(searchText);
-
-        let cardType = "Other";
-        if (hasEcgSignal) {
-          cardType = "ECG Prepaid";
-        } else if (hasGhanaCardSignal) {
-          cardType = "Ghana Card";
-        }
-
-        return {
-          cardType,
-          meterNumber: normalizeNumber(meterNumber),
-          token: normalizeToken(token),
-        };
-      }
-
-      function buildSearchText(rawData) {
-        const values = [];
-
-        values.push(rawData.serialNumber || "");
-        for (const record of rawData.records || []) {
-          values.push(record.recordType, record.mediaType, record.id, record.lang);
-
-          if (typeof record.data === "string") {
-            values.push(record.data);
-          } else if (record.data) {
-            values.push(JSON.stringify(record.data));
-          }
-
-          values.push(record.hex || "");
-        }
-
-        return values.filter(Boolean).join(" ");
-      }
-
-      function findFirstMatch(text, patterns) {
-        for (const pattern of patterns) {
-          const match = text.match(pattern);
-          if (match?.[1]) {
-            return match[1];
-          }
-        }
-        return "";
-      }
-
-      function normalizeNumber(value) {
-        return String(value || "").replace(/\D/g, "");
-      }
-
-      function normalizeToken(value) {
-        return String(value || "").replace(/\D/g, "");
-      }
-
-      function renderCurrentScan() {
-        const scan = state.currentScan;
-        const meterNumber = elements.meterInput.value.trim() || scan?.meter_number || "";
-        const hasScan = Boolean(scan);
-
-        elements.uidValue.textContent = scan?.card_uid || "No card scanned";
-        elements.meterValue.textContent = meterNumber || "Not detected";
-        elements.tokenValue.textContent = scan?.token || "Not found";
-        elements.typeValue.textContent = scan?.card_type || "Other";
-        elements.recordCount.textContent = `${scan?.raw_data?.recordCount || 0} records`;
-        elements.rawDataOutput.textContent = scan ? JSON.stringify(scan.raw_data, null, 2) : "No NFC data yet.";
-
-        elements.readyIndicator.textContent = meterNumber ? "Top-up Ready" : "Not Ready";
-        elements.readyIndicator.className = meterNumber
-          ? "rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200"
-          : "rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-semibold text-zinc-400";
-
-        elements.copyUidButton.disabled = !hasScan || !scan.card_uid || scan.card_uid === "Unavailable";
-        elements.copyMeterButton.disabled = !meterNumber;
-        elements.saveReadButton.disabled = !hasScan;
-      }
-
-      function handleMeterEdit() {
-        const meterNumber = elements.meterInput.value.trim();
-        if (state.currentScan) {
-          state.currentScan.meter_number = meterNumber;
-        }
-        renderCurrentScan();
-      }
-
-      function addHistoryItem(scan) {
-        const snapshot = {
-          ...scan,
-          notes: elements.notesInput.value.trim(),
-          meter_number: elements.meterInput.value.trim() || scan.meter_number || "",
-        };
-
-        state.history = [snapshot, ...state.history.filter((item) => item.card_uid !== snapshot.card_uid || item.timestamp !== snapshot.timestamp)].slice(
-          0,
-          MAX_HISTORY_ITEMS
-        );
-        localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(state.history));
-        renderHistory();
-      }
-
-      function loadHistory() {
-        try {
-          state.history = JSON.parse(localStorage.getItem(STORAGE_KEYS.history) || "[]");
-        } catch {
-          state.history = [];
-        }
-      }
-
-      function renderHistory() {
-        elements.clearHistoryButton.disabled = state.history.length === 0;
-
-        if (state.history.length === 0) {
-          elements.historyList.innerHTML =
-            '<p class="rounded-xl border border-zinc-800 bg-black/24 p-3 text-sm text-zinc-500">No scans saved locally yet.</p>';
-          return;
-        }
-
-        elements.historyList.innerHTML = state.history
-          .map((item) => {
-            const date = formatDateTime(item.timestamp);
-            const uid = escapeHtml(item.card_uid || "Unavailable");
-            const type = escapeHtml(item.card_type || "Other");
-            const meter = escapeHtml(item.meter_number || "No meter");
-            const token = escapeHtml(item.token ? `Token ${item.token}` : "No token");
-            const notes = item.notes ? `<p class="mt-2 text-xs leading-5 text-zinc-400">${escapeHtml(item.notes)}</p>` : "";
-
-            return `
-              <article class="rounded-xl border border-zinc-800 bg-black/24 p-3">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <p class="break-all text-sm font-semibold text-white">${uid}</p>
-                    <p class="mt-1 text-xs text-zinc-500">${date}</p>
-                  </div>
-                  <span class="shrink-0 rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-200">${type}</span>
-                </div>
-                <div class="mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
-                  <span class="rounded-lg bg-zinc-950/80 px-2.5 py-2">${meter}</span>
-                  <span class="rounded-lg bg-zinc-950/80 px-2.5 py-2">${token}</span>
-                </div>
-                ${notes}
-              </article>
-            `;
-          })
-          .join("");
-      }
-
-      function clearHistory() {
-        if (!window.confirm("Clear all local scan history?")) {
-          return;
-        }
-
-        state.history = [];
-        localStorage.removeItem(STORAGE_KEYS.history);
-        renderHistory();
-        showMessage("success", "Local scan history cleared.");
-      }
-
-      function loadConfig() {
-        elements.projectUrlInput.value = localStorage.getItem(STORAGE_KEYS.supabaseUrl) || "";
-        elements.anonKeyInput.value = localStorage.getItem(STORAGE_KEYS.supabaseAnonKey) || "";
-      }
-
-      function saveConfig() {
-        const projectUrl = cleanProjectUrl(elements.projectUrlInput.value);
-        const anonKey = elements.anonKeyInput.value.trim();
-
-        if (!projectUrl || !anonKey) {
-          showMessage("error", "Enter both Supabase Project URL and Anon Key.");
-          return;
-        }
-
-        localStorage.setItem(STORAGE_KEYS.supabaseUrl, projectUrl);
-        localStorage.setItem(STORAGE_KEYS.supabaseAnonKey, anonKey);
-        elements.projectUrlInput.value = projectUrl;
-        showMessage("success", "Supabase configuration saved on this device.");
-      }
-
-      async function saveReadToSupabase() {
-        if (!state.currentScan) {
-          showMessage("error", "Scan a card before saving.");
-          return;
-        }
-
-        const projectUrl = cleanProjectUrl(elements.projectUrlInput.value || localStorage.getItem(STORAGE_KEYS.supabaseUrl));
-        const anonKey = elements.anonKeyInput.value.trim() || localStorage.getItem(STORAGE_KEYS.supabaseAnonKey);
-
-        if (!projectUrl || !anonKey) {
-          showMessage("error", "Enter and save your Supabase URL and Anon Key first.");
-          return;
-        }
-
-        localStorage.setItem(STORAGE_KEYS.supabaseUrl, projectUrl);
-        localStorage.setItem(STORAGE_KEYS.supabaseAnonKey, anonKey);
-
-        const payload = {
-          card_uid: state.currentScan.card_uid || "",
-          card_type: state.currentScan.card_type || "Other",
-          meter_number: elements.meterInput.value.trim() || state.currentScan.meter_number || "",
-          token: state.currentScan.token || "",
-          raw_data: state.currentScan.raw_data || {},
-          notes: elements.notesInput.value.trim(),
-        };
-
-        elements.saveReadButton.disabled = true;
-        elements.saveReadButton.textContent = "Saving...";
-        showMessage("loading", "Saving NFC read to Supabase...");
-
-        try {
-          const response = await fetch(`${projectUrl}/rest/v1/nfc_reads`, {
-            method: "POST",
-            headers: {
-              apikey: anonKey,
-              Authorization: `Bearer ${anonKey}`,
-              "Content-Type": "application/json",
-              Prefer: "return=representation",
-            },
-            body: JSON.stringify(payload),
-          });
-
-          if (!response.ok) {
-            const details = await readResponseDetails(response);
-            throw new Error(`Supabase save failed (${response.status}): ${details}`);
-          }
-
-          const savedRows = await response.json();
-          state.currentScan = {
-            ...state.currentScan,
-            ...payload,
-            supabase_response: savedRows,
-          };
-          addHistoryItem(state.currentScan);
-          showMessage("success", "NFC read saved to Supabase.");
-        } catch (error) {
-          showMessage("error", error.message || "Could not save NFC read to Supabase.");
-        } finally {
-          elements.saveReadButton.textContent = "Save Read";
-          renderCurrentScan();
-        }
-      }
-
-      async function readResponseDetails(response) {
-        try {
-          const json = await response.json();
-          return json.message || json.details || JSON.stringify(json);
-        } catch {
-          return response.statusText || "Unknown error";
-        }
-      }
-
-      function cleanProjectUrl(value) {
-        return String(value || "").trim().replace(/\/+$/, "");
-      }
-
-      async function copyValue(label, value) {
-        const text = String(value || "").trim();
-        if (!text) {
-          showMessage("error", `${label} is empty.`);
-          return;
-        }
-
-        try {
-          await navigator.clipboard.writeText(text);
-          showMessage("success", `${label} copied.`);
-        } catch {
-          showMessage("error", `Could not copy ${label}. Select and copy it manually.`);
-        }
-      }
-
-      function getCurrentUid() {
-        return state.currentScan?.card_uid || "";
-      }
-
-      function setStatus(kind, label, detail) {
-        elements.statusBadge.className =
-          `status-${kind} inline-flex shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-300`;
-        elements.statusLabel.textContent = label;
-        elements.statusText.textContent = detail;
-      }
-
-      function showMessage(kind, message) {
-        const baseClass = "mt-4 rounded-xl border px-3 py-3 text-sm leading-6";
-        const classes = {
-          success: "border-emerald-500/35 bg-emerald-500/10 text-emerald-100",
-          error: "border-red-500/35 bg-red-500/10 text-red-100",
-          loading: "border-blue-500/35 bg-blue-500/10 text-blue-100",
-        };
-
-        elements.saveMessage.className = `${baseClass} ${classes[kind] || classes.loading}`;
-        elements.saveMessage.textContent = message;
-        elements.saveMessage.classList.remove("hidden");
-      }
-
-      function formatNfcError(error) {
-        if (error?.name === "NotAllowedError") {
-          return "NFC permission was denied. Allow NFC access and try again.";
-        }
-        if (error?.name === "NotSupportedError") {
-          return "This device or browser does not support Web NFC scanning.";
-        }
-        if (error?.name === "NotReadableError") {
-          return "NFC is unavailable or disabled. Turn on NFC and try again.";
-        }
-        if (error?.name === "AbortError") {
-          return "NFC scan was stopped.";
-        }
-        return error?.message || "Could not start NFC scan.";
-      }
-
-      function bytesToHex(bytes) {
-        return Array.from(bytes)
-          .map((byte) => byte.toString(16).padStart(2, "0"))
-          .join("");
-      }
-
-      function createId() {
-        return window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      }
-
-      function getRecordBytes(data) {
-        if (!data) {
-          return new Uint8Array();
-        }
-
-        if (data instanceof DataView) {
-          return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-        }
-
-        if (data instanceof ArrayBuffer) {
-          return new Uint8Array(data);
-        }
-
-        if (ArrayBuffer.isView(data)) {
-          return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-        }
-
-        return new Uint8Array();
-      }
-
-      function formatDateTime(value) {
-        try {
-          return new Intl.DateTimeFormat(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          }).format(new Date(value));
-        } catch {
-          return value || "";
-        }
-      }
-
-      function escapeHtml(value) {
-        return String(value)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
-      }
-
-      function isLikelyIos() {
-        return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-      }
-    </script>
   </body>
 </html>
