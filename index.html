@@ -47,8 +47,13 @@
 
           <div class="status-card">
             <p class="eyebrow">Real-time Status</p>
-            <p id="statusText">Ready to scan when Web NFC is available.</p>
+            <p id="statusText">Loading app...</p>
           </div>
+
+          <details id="diagnosticsPanel" class="diagnostics" open>
+            <summary>Diagnostics</summary>
+            <pre id="diagnosticsOutput">App JavaScript has not initialized. Make sure app.js is next to index.html and refresh the page.</pre>
+          </details>
         </div>
       </section>
 

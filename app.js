@@ -9,6 +9,12 @@ const MAX_HISTORY_ITEMS = 25;
 const state = {
   currentScan: null,
   scanAbortController: null,
+  scanHintTimeoutId: null,
+  nfcReader: null,
+  isScanning: false,
+  storageAvailable: true,
+  storageError: "",
+  lastEvent: "App script loaded.",
   history: [],
 };
 
@@ -18,6 +24,8 @@ const elements = {
   statusBadge: document.getElementById("statusBadge"),
   statusLabel: document.getElementById("statusLabel"),
   statusText: document.getElementById("statusText"),
+  diagnosticsPanel: document.getElementById("diagnosticsPanel"),
+  diagnosticsOutput: document.getElementById("diagnosticsOutput"),
   supportAlert: document.getElementById("supportAlert"),
   supportMessage: document.getElementById("supportMessage"),
   uidValue: document.getElementById("uidValue"),
@@ -40,19 +48,37 @@ const elements = {
   clearHistoryButton: document.getElementById("clearHistoryButton"),
 };
 
-document.addEventListener("DOMContentLoaded", initApp);
+document.addEventListener("DOMContentLoaded", () => {
+  try {
+    initApp();
+  } catch (error) {
+    reportFatalStartupError(error);
+  }
+});
+
+window.addEventListener("error", (event) => {
+  state.lastEvent = `Runtime error: ${event.message || "Unknown error"}`;
+  updateDiagnostics();
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  state.lastEvent = `Unhandled promise rejection: ${event.reason?.message || event.reason || "Unknown error"}`;
+  updateDiagnostics();
+});
 
 function initApp() {
+  bindEvents();
   loadConfig();
   loadHistory();
   renderHistory();
-  bindEvents();
   checkNfcSupport();
   renderCurrentScan();
+  state.lastEvent = "App initialized and controls are connected.";
+  updateDiagnostics();
 }
 
 function bindEvents() {
-  elements.scanButton.addEventListener("click", startNfcScan);
+  elements.scanButton.addEventListener("click", handleScanButtonClick);
   elements.copyUidButton.addEventListener("click", () => copyValue("UID", getCurrentUid()));
   elements.copyMeterButton.addEventListener("click", () => copyValue("Meter Number", elements.meterInput.value));
   elements.saveConfigButton.addEventListener("click", saveConfig);
@@ -61,12 +87,22 @@ function bindEvents() {
   elements.meterInput.addEventListener("input", handleMeterEdit);
 }
 
+function handleScanButtonClick() {
+  if (state.isScanning) {
+    stopNfcScan("NFC scan stopped.");
+    return;
+  }
+
+  startNfcScan();
+}
+
 function checkNfcSupport() {
   const hasNfc = "NDEFReader" in window;
   const isSecure = window.isSecureContext;
 
   if (hasNfc && isSecure) {
     setStatus("idle", "Idle", "Ready. Tap Start NFC Scan and hold the card to the back of your phone.");
+    setDiagnosticsOpen(false);
     return;
   }
 
@@ -85,48 +121,75 @@ function checkNfcSupport() {
 
   elements.scanButton.disabled = true;
   setStatus("unsupported", "Unsupported", "Web NFC is unavailable in this browser or context.");
+  setDiagnosticsOpen(true);
+  updateDiagnostics();
 }
 
 async function startNfcScan() {
+  state.lastEvent = "Start NFC Scan tapped.";
+  updateDiagnostics();
+
   if (!("NDEFReader" in window)) {
     showMessage("error", "Web NFC is not supported in this browser.");
     setStatus("unsupported", "Unsupported", "Web NFC is unavailable in this browser.");
+    setDiagnosticsOpen(true);
+    updateDiagnostics();
     return;
   }
 
   if (!window.isSecureContext) {
     showMessage("error", "Web NFC requires HTTPS or localhost.");
     setStatus("unsupported", "Unsupported", "Open this page from HTTPS or localhost to scan.");
+    setDiagnosticsOpen(true);
+    updateDiagnostics();
     return;
   }
 
   try {
     elements.scanButton.disabled = true;
+    elements.scanButton.textContent = "Starting NFC Scan...";
     elements.body.classList.add("is-scanning");
     setStatus("starting", "Starting", "Requesting NFC permission...");
 
     state.scanAbortController = new AbortController();
-    const reader = new NDEFReader();
+    state.nfcReader = new NDEFReader();
 
-    reader.addEventListener("reading", handleNfcReading);
-    reader.addEventListener("readingerror", () => {
-      setStatus("error", "Read Error", "The card was detected but could not be read. Try holding it steady.");
-      elements.scanButton.disabled = false;
-      elements.body.classList.remove("is-scanning");
+    state.nfcReader.addEventListener("reading", handleNfcReading);
+    state.nfcReader.addEventListener("readingerror", () => {
+      state.lastEvent = "readingerror fired. Chrome detected a tag but could not read NDEF data.";
+      setStatus(
+        "error",
+        "Read Error",
+        "Chrome detected a tag but could not read NDEF data. Try again, or test with a known NDEF tag."
+      );
+      setDiagnosticsOpen(true);
+      stopNfcScan();
     });
 
-    await reader.scan({ signal: state.scanAbortController.signal });
+    await state.nfcReader.scan({ signal: state.scanAbortController.signal });
+    state.isScanning = true;
+    elements.scanButton.disabled = false;
+    elements.scanButton.textContent = "Stop NFC Scan";
+    state.lastEvent = "NFC scan started. Waiting for a readable NDEF tag.";
     setStatus("scanning", "Scanning", "NFC scan is active. Hold the card flat against the back of your phone.");
+    scheduleScanHint();
+    updateDiagnostics();
   } catch (error) {
     const message = formatNfcError(error);
     setStatus("error", "Error", message);
     showMessage("error", message);
-    elements.scanButton.disabled = false;
-    elements.body.classList.remove("is-scanning");
+    state.lastEvent = `Scan start failed: ${error?.name || "Error"} ${error?.message || ""}`.trim();
+    stopNfcScan();
+    setDiagnosticsOpen(true);
+    updateDiagnostics();
   }
 }
 
 async function handleNfcReading(event) {
+  state.lastEvent = `reading fired. Serial: ${event.serialNumber || "unavailable"}`;
+  clearScanHint();
+  updateDiagnostics();
+
   try {
     const rawData = await normalizeNdefEvent(event);
     const parsed = parseCardData(rawData);
@@ -150,15 +213,65 @@ async function handleNfcReading(event) {
   } catch (error) {
     setStatus("error", "Parse Error", error.message || "Card was read, but the payload could not be decoded.");
     showMessage("error", error.message || "Card was read, but the payload could not be decoded.");
+    state.lastEvent = `Parse error after reading: ${error.message || "Unknown error"}`;
+    setDiagnosticsOpen(true);
   } finally {
-    elements.scanButton.disabled = false;
-    elements.body.classList.remove("is-scanning");
+    stopNfcScan();
+    updateDiagnostics();
+  }
+}
 
-    if (state.scanAbortController) {
+function scheduleScanHint() {
+  clearScanHint();
+  state.scanHintTimeoutId = window.setTimeout(() => {
+    if (!state.isScanning) {
+      return;
+    }
+
+    state.lastEvent = "No Web NFC reading event after 15 seconds.";
+    setStatus(
+      "scanning",
+      "Still Scanning",
+      "No readable NDEF data yet. If Android beeps but this screen does not update, the card is probably not exposing NDEF records to Chrome."
+    );
+    setDiagnosticsOpen(true);
+    updateDiagnostics();
+  }, 15000);
+}
+
+function clearScanHint() {
+  if (state.scanHintTimeoutId) {
+    window.clearTimeout(state.scanHintTimeoutId);
+    state.scanHintTimeoutId = null;
+  }
+}
+
+function stopNfcScan(detail) {
+  if (state.scanAbortController) {
+    try {
       state.scanAbortController.abort();
-      state.scanAbortController = null;
+    } catch {
+      // The scan may already be stopped by the browser.
     }
   }
+
+  state.scanAbortController = null;
+  state.nfcReader = null;
+  state.isScanning = false;
+  clearScanHint();
+  resetScanControls();
+
+  if (detail) {
+    state.lastEvent = detail;
+    setStatus("idle", "Idle", detail);
+    updateDiagnostics();
+  }
+}
+
+function resetScanControls() {
+  elements.scanButton.disabled = false;
+  elements.scanButton.textContent = "Start NFC Scan";
+  elements.body.classList.remove("is-scanning");
 }
 
 async function normalizeNdefEvent(event) {
@@ -341,13 +454,13 @@ function addHistoryItem(scan) {
     snapshot,
     ...state.history.filter((item) => item.card_uid !== snapshot.card_uid || item.timestamp !== snapshot.timestamp),
   ].slice(0, MAX_HISTORY_ITEMS);
-  localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(state.history));
+  writeStorage(STORAGE_KEYS.history, JSON.stringify(state.history));
   renderHistory();
 }
 
 function loadHistory() {
   try {
-    state.history = JSON.parse(localStorage.getItem(STORAGE_KEYS.history) || "[]");
+    state.history = JSON.parse(readStorage(STORAGE_KEYS.history, "[]"));
   } catch {
     state.history = [];
   }
@@ -396,14 +509,50 @@ function clearHistory() {
   }
 
   state.history = [];
-  localStorage.removeItem(STORAGE_KEYS.history);
+  removeStorage(STORAGE_KEYS.history);
   renderHistory();
   showMessage("success", "Local scan history cleared.");
 }
 
 function loadConfig() {
-  elements.projectUrlInput.value = localStorage.getItem(STORAGE_KEYS.supabaseUrl) || "";
-  elements.anonKeyInput.value = localStorage.getItem(STORAGE_KEYS.supabaseAnonKey) || "";
+  elements.projectUrlInput.value = readStorage(STORAGE_KEYS.supabaseUrl, "");
+  elements.anonKeyInput.value = readStorage(STORAGE_KEYS.supabaseAnonKey, "");
+}
+
+function readStorage(key, fallbackValue) {
+  try {
+    return window.localStorage.getItem(key) || fallbackValue;
+  } catch (error) {
+    noteStorageError(error);
+    return fallbackValue;
+  }
+}
+
+function writeStorage(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    noteStorageError(error);
+    return false;
+  }
+}
+
+function removeStorage(key) {
+  try {
+    window.localStorage.removeItem(key);
+    return true;
+  } catch (error) {
+    noteStorageError(error);
+    return false;
+  }
+}
+
+function noteStorageError(error) {
+  state.storageAvailable = false;
+  state.storageError = error?.message || "Browser storage is unavailable.";
+  state.lastEvent = "Browser storage is unavailable, but scanning can still run.";
+  updateDiagnostics();
 }
 
 function saveConfig() {
@@ -415,10 +564,15 @@ function saveConfig() {
     return;
   }
 
-  localStorage.setItem(STORAGE_KEYS.supabaseUrl, projectUrl);
-  localStorage.setItem(STORAGE_KEYS.supabaseAnonKey, anonKey);
+  writeStorage(STORAGE_KEYS.supabaseUrl, projectUrl);
+  writeStorage(STORAGE_KEYS.supabaseAnonKey, anonKey);
   elements.projectUrlInput.value = projectUrl;
-  showMessage("success", "Supabase configuration saved on this device.");
+  showMessage(
+    state.storageAvailable ? "success" : "error",
+    state.storageAvailable
+      ? "Supabase configuration saved on this device."
+      : "Supabase config is usable for this session, but browser storage is blocked."
+  );
 }
 
 async function saveReadToSupabase() {
@@ -427,16 +581,16 @@ async function saveReadToSupabase() {
     return;
   }
 
-  const projectUrl = cleanProjectUrl(elements.projectUrlInput.value || localStorage.getItem(STORAGE_KEYS.supabaseUrl));
-  const anonKey = elements.anonKeyInput.value.trim() || localStorage.getItem(STORAGE_KEYS.supabaseAnonKey);
+  const projectUrl = cleanProjectUrl(elements.projectUrlInput.value || readStorage(STORAGE_KEYS.supabaseUrl, ""));
+  const anonKey = elements.anonKeyInput.value.trim() || readStorage(STORAGE_KEYS.supabaseAnonKey, "");
 
   if (!projectUrl || !anonKey) {
     showMessage("error", "Enter and save your Supabase URL and Anon Key first.");
     return;
   }
 
-  localStorage.setItem(STORAGE_KEYS.supabaseUrl, projectUrl);
-  localStorage.setItem(STORAGE_KEYS.supabaseAnonKey, anonKey);
+  writeStorage(STORAGE_KEYS.supabaseUrl, projectUrl);
+  writeStorage(STORAGE_KEYS.supabaseAnonKey, anonKey);
 
   const payload = {
     card_uid: state.currentScan.card_uid || "",
@@ -516,6 +670,43 @@ async function copyValue(label, value) {
 
 function getCurrentUid() {
   return state.currentScan?.card_uid || "";
+}
+
+function updateDiagnostics() {
+  if (!elements.diagnosticsOutput) {
+    return;
+  }
+
+  const diagnostics = [
+    `App JS: initialized`,
+    `Last event: ${state.lastEvent}`,
+    `Secure context: ${window.isSecureContext ? "yes" : "no"}`,
+    `NDEFReader API: ${"NDEFReader" in window ? "available" : "missing"}`,
+    `Scan active: ${state.isScanning ? "yes" : "no"}`,
+    `Storage: ${state.storageAvailable ? "available" : `blocked (${state.storageError})`}`,
+    `Page URL: ${window.location.href}`,
+    `User agent: ${navigator.userAgent}`,
+  ];
+
+  elements.diagnosticsOutput.textContent = diagnostics.join("\n");
+}
+
+function setDiagnosticsOpen(isOpen) {
+  if (elements.diagnosticsPanel) {
+    elements.diagnosticsPanel.open = isOpen;
+  }
+}
+
+function reportFatalStartupError(error) {
+  state.lastEvent = `Startup failed: ${error?.message || "Unknown error"}`;
+
+  if (elements.statusLabel && elements.statusText) {
+    setStatus("error", "Startup Error", "App JavaScript started but failed before controls were connected.");
+  }
+
+  setDiagnosticsOpen(true);
+
+  updateDiagnostics();
 }
 
 function setStatus(kind, label, detail) {
